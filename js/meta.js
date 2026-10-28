@@ -20,9 +20,9 @@
 
   var PROYECTO = {
     objetivo: 'Motor de notas open source para mis apps y app web pública de transcripción de piano en vivo.',
-    fase: FASE.DISENO,
-    fase_estado: ESTADO_FASE.EN_CURSO,
-    fases_completadas: 2,
+    fase: FASE.CONSTRUCCION,
+    fase_estado: ESTADO_FASE.BLOQUEADA,
+    fases_completadas: 3,
     tipo: TIPO_PROYECTO.RECURSO
   };
 
