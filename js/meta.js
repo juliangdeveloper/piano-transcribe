@@ -71,6 +71,26 @@
     return record;
   }
 
+  function cloneMap(src) {
+    var out = {};
+    if (!src || typeof src !== 'object' || Array.isArray(src)) return out;
+    var keys = Object.keys(src);
+    var i;
+    for (i = 0; i < keys.length; i++) out[keys[i]] = src[keys[i]];
+    return out;
+  }
+
+  function proyectoIgual(stored, bloque) {
+    if (!bloque || !stored || typeof stored !== 'object' || Array.isArray(stored)) return false;
+    var keys = Object.keys(bloque);
+    if (Object.keys(stored).length !== keys.length) return false;
+    var i;
+    for (i = 0; i < keys.length; i++) {
+      if (stored[keys[i]] !== bloque[keys[i]]) return false;
+    }
+    return true;
+  }
+
   function keyFor(slug) {
     return 'meta.v1.' + slug;
   }
@@ -307,7 +327,27 @@
       if (!storage) return null;
       var raw = readRaw(storage, slug);
       var classified = classify(raw, slug);
-      if (classified.state === 'ok') return classified.record;
+      if (classified.state === 'ok') {
+        var kept = classified.record;
+        var bloque = metaProyecto(proyectoSource);
+        if (!bloque || proyectoIgual(kept.proyecto, bloque)) return kept;
+        var msKeep = rateMs(env);
+        if (!(env && env.force === true) && tooSoon(storage, msKeep)) return kept;
+        var refreshed = {
+          v: 1,
+          slug: slug,
+          version: plainVersion(version) || kept.version,
+          updatedAt: stampOf(resolveNow(env)),
+          stats: cloneMap(kept.stats),
+          logros: Array.isArray(kept.logros) ? kept.logros.slice() : [],
+          hitos: cloneMap(kept.hitos)
+        };
+        refreshed.proyecto = bloque;
+        storage.setItem(keyFor(slug), JSON.stringify(refreshed));
+        markWritten(storage, msKeep);
+        notifyParent(resolveWindow(env), slug, refreshed);
+        return refreshed;
+      }
       var built = { stats: {}, logros: [] };
       try {
         var derived = typeof derive === 'function' ? derive(storage) : null;

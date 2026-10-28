@@ -73,20 +73,48 @@ test('an invalid block is left out and never throws', () => {
   }
 });
 
-test('an old record without proyecto is still valid and gains the block', () => {
+test('an old record without proyecto is still valid and gains the block on open', () => {
   const old = {
     v: 1, slug: 'piano-transcribe', version: '1.12.2', updatedAt: '2026-01-01T00:00:00.000Z',
-    stats: {}, logros: ['first_note'], hitos: { first_note: '2026-01-01T00:00:00.000Z' }
+    stats: { sessions: 7 }, logros: ['first_note'], hitos: { first_note: '2026-01-01T00:00:00.000Z' }
   };
-  const raw = JSON.stringify(old);
-  const storage = mem({ [KEY]: raw });
-  backfill(storage);
-  assert.strictEqual(storage.getItem(KEY), raw);
+  const storage = mem({ [KEY]: JSON.stringify(old) });
+  const rec = backfill(storage);
   assert.strictEqual(storage.getItem(KEY + '.corrupt'), null);
-  update(storage, []);
-  const rec = JSON.parse(storage.getItem(KEY));
   assert.strictEqual(rec.hitos.first_note, '2026-01-01T00:00:00.000Z');
+  assert.deepStrictEqual(rec.logros, ['first_note']);
+  assert.strictEqual(rec.stats.sessions, 7);
   assert.deepStrictEqual(rec.proyecto, Object.assign({}, Meta.PROYECTO));
+  assert.strictEqual(rec.proyecto.fase, 4);
+  assert.strictEqual(rec.proyecto.fase_estado, 2);
+  assert.strictEqual(rec.proyecto.fases_completadas, 3);
+});
+
+test('backfill rewrites a different fase and keeps stats, logros and hitos', () => {
+  const stale = { objetivo: 'Objetivo anterior.', fase: 3, fase_estado: 1, fases_completadas: 2, tipo: 'recurso' };
+  const old = {
+    v: 1, slug: 'piano-transcribe', version: '0.0.1', updatedAt: '2026-01-01T00:00:00.000Z',
+    stats: { sessions: 4, notes_captured_total: 9 },
+    logros: ['first_session', 'first_note'],
+    hitos: { first_note: '2026-01-01T00:00:00.000Z', first_session: '2026-01-02T00:00:00.000Z' },
+    proyecto: Object.assign({ extra: 1 }, stale)
+  };
+  const storage = mem({ [KEY]: JSON.stringify(old) });
+  const rec = backfill(storage);
+  assert.deepStrictEqual(rec.proyecto, Object.assign({}, Meta.PROYECTO));
+  assert.strictEqual(rec.proyecto.fase, Meta.FASE.CONSTRUCCION);
+  assert.strictEqual(rec.proyecto.fase_estado, Meta.ESTADO_FASE.BLOQUEADA);
+  assert.strictEqual(rec.proyecto.fases_completadas, 3);
+  assert.strictEqual(rec.proyecto.objetivo, Meta.PROYECTO.objetivo);
+  assert.strictEqual(rec.stats.sessions, 4);
+  assert.strictEqual(rec.stats.notes_captured_total, 9);
+  assert.deepStrictEqual(rec.logros, old.logros);
+  assert.deepStrictEqual(rec.hitos, old.hitos);
+  assert.strictEqual(storage.getItem(KEY + '.corrupt'), null);
+  const again = backfill(storage);
+  assert.strictEqual(again.updatedAt, rec.updatedAt);
+  assert.deepStrictEqual(again.stats, rec.stats);
+  assert.deepStrictEqual(again.hitos, old.hitos);
 });
 
 test('a stored record with a different proyecto gets the current block on the next write', () => {

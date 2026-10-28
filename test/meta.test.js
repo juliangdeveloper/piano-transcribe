@@ -10,7 +10,7 @@ const SLUG = 'piano-transcribe';
 const KEY = 'meta.v1.piano-transcribe';
 const CORRUPT = 'meta.v1.piano-transcribe.corrupt';
 const WHEN = new Date('2026-10-23T18:00:00.000Z');
-const VERSION = '1.12.11';
+const VERSION = '1.12.12';
 
 function memoryStorage(initial) {
   const data = Object.assign({}, initial || {});
@@ -85,7 +85,7 @@ test('un guardado viejo sin la clave meta produce ceros y no toca las claves exi
   ]);
 });
 
-test('un registro meta ya válido no se reescribe en el backfill', () => {
+test('al abrir, un registro viejo sin proyecto recibe el actual y conserva stats, logros e hitos', () => {
   const existing = {
     v: 1,
     slug: SLUG,
@@ -105,16 +105,27 @@ test('un registro meta ya válido no se reescribe en el backfill', () => {
   };
   const raw = JSON.stringify(existing);
   let writes = 0;
+  let stored = raw;
   const storage = {
-    getItem: function (key) { return key === KEY ? raw : null; },
-    setItem: function () { writes += 1; }
+    getItem: function (key) { return key === KEY ? stored : null; },
+    setItem: function (key, value) {
+      writes += 1;
+      if (key === KEY) stored = String(value);
+    }
   };
   const back = Meta.metaBackfill(SLUG, VERSION, Progress.deriveLegacy, envAt(storage, WHEN));
-  assert.strictEqual(writes, 0);
-  assert.strictEqual(back.updatedAt, '2026-01-01T00:00:00.000Z');
-  assert.strictEqual(back.version, '1.11.0');
+  assert.strictEqual(writes, 1);
+  assert.strictEqual(back.updatedAt, '2026-10-23T18:00:00.000Z');
+  assert.strictEqual(back.version, VERSION);
   assert.deepStrictEqual(back.stats, existing.stats);
+  assert.deepStrictEqual(back.logros, existing.logros);
   assert.deepStrictEqual(back.hitos, existing.hitos);
+  assert.deepStrictEqual(back.proyecto, Object.assign({}, Meta.PROYECTO));
+  assert.strictEqual(storage.getItem(CORRUPT), null);
+  const again = Meta.metaBackfill(SLUG, VERSION, Progress.deriveLegacy, envAt(storage, new Date(WHEN.getTime() + 1000)));
+  assert.strictEqual(writes, 1);
+  assert.strictEqual(again.version, VERSION);
+  assert.deepStrictEqual(again.stats, existing.stats);
 });
 
 test('un registro corrupto se copia y se reconstruye sin tocar el resto', () => {
@@ -556,6 +567,65 @@ test('pagehide y ocultar la página guardan un cambio pendiente antes de un segu
   target.emit('visibilitychange');
   assert.deepStrictEqual(keys, [KEY, KEY, KEY]);
   assert.strictEqual(posts.length, 3);
+});
+
+test('al cargar, una fase distinta se reemplaza y la siguiente toma no borra los conteos', () => {
+  const old = {
+    v: 1,
+    slug: SLUG,
+    version: '1.11.0',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    stats: {
+      sessions: 3,
+      notes_captured_total: 9,
+      longest_session_notes: 4,
+      chords_captured: 1
+    },
+    logros: ['first_note', 'first_session'],
+    hitos: {
+      first_note: '2026-01-01T00:00:00.000Z',
+      first_session: '2026-01-01T00:00:00.000Z'
+    },
+    proyecto: {
+      objetivo: 'Objetivo anterior.',
+      fase: 2,
+      fase_estado: 1,
+      fases_completadas: 1,
+      tipo: 'recurso'
+    }
+  };
+  const storage = memoryStorage({ [KEY]: JSON.stringify(old) });
+  let now = 0;
+  const tracker = Progress.createTracker({
+    version: VERSION,
+    localStorage: storage,
+    now: WHEN,
+    clock: function () { return now; },
+    setTimer: function () { return 1; },
+    clearTimer: function () {},
+    window: sameWindow()
+  });
+  const loaded = tracker.load();
+  assert.deepStrictEqual(loaded.proyecto, Object.assign({}, Meta.PROYECTO));
+  assert.strictEqual(loaded.proyecto.fase, 4);
+  assert.strictEqual(loaded.proyecto.fase_estado, 2);
+  assert.strictEqual(loaded.proyecto.fases_completadas, 3);
+  assert.deepStrictEqual(loaded.stats, old.stats);
+  assert.deepStrictEqual(loaded.logros, old.logros);
+  assert.deepStrictEqual(loaded.hitos, old.hitos);
+  assert.strictEqual(tracker.stats().sessions, 3);
+  assert.strictEqual(tracker.stats().notes_captured_total, 9);
+  tracker.beginSession();
+  tracker.captureNote(1);
+  now = 1000;
+  const flushed = tracker.flush();
+  assert.strictEqual(flushed.stats.sessions, 4);
+  assert.strictEqual(flushed.stats.notes_captured_total, 10);
+  assert.strictEqual(flushed.stats.longest_session_notes, 4);
+  assert.strictEqual(flushed.stats.chords_captured, 1);
+  assert.deepStrictEqual(flushed.proyecto, Object.assign({}, Meta.PROYECTO));
+  assert.strictEqual(flushed.hitos.first_note, '2026-01-01T00:00:00.000Z');
+  assert.strictEqual(flushed.hitos.first_session, '2026-01-01T00:00:00.000Z');
 });
 
 test('tras cargar y tocar, las claves viejas siguen byte a byte', () => {
