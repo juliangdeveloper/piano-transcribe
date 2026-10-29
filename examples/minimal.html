@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>piano-transcribe · ejemplo mínimo</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 16px; }
+    button { font-size: 16px; padding: 8px 14px; margin-right: 6px; }
+    #notes { font-size: 20px; margin-top: 12px; }
+  </style>
+</head>
+<body>
+  <button id="start" type="button">Escuchar</button>
+  <button id="midi" type="button" disabled>Descargar MIDI</button>
+  <p id="status"></p>
+  <p id="notes"></p>
+  <script type="module">
+    const ENGINE_URL = 'https://juliangdeveloper.github.io/piano-transcribe/engine/v1/capture.js';
+    const REQUIRED_INTERFACE = 1;
+    const FFT_SIZE = 2048;
+
+    const engine = (await import(ENGINE_URL)).default;
+    const status = document.getElementById('status');
+    const notes = document.getElementById('notes');
+    const midiButton = document.getElementById('midi');
+
+    if (engine.INTERFACE !== REQUIRED_INTERFACE) throw new Error('interface ' + engine.INTERFACE);
+    status.textContent = engine.API.name + ' ' + engine.VERSION;
+
+    const session = engine.createCapture({ profile: 'score', maxVoices: 2, score: { bpm: 90, timeSig: '3/4' } });
+
+    document.getElementById('start').addEventListener('click', async () => {
+      const ctx = new AudioContext();
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = FFT_SIZE;
+      ctx.createMediaStreamSource(stream).connect(analyser);
+      const buf = new Float32Array(FFT_SIZE);
+      setInterval(() => {
+        analyser.getFloatTimeDomainData(buf);
+        const out = session.hop(buf, ctx.sampleRate, performance.now());
+        for (const ev of out.events) if (ev.type === 'on' && ev.fresh) notes.textContent += ev.pitch + ' ';
+        midiButton.disabled = !notes.textContent;
+      }, engine.HOP_MS);
+    });
+
+    midiButton.addEventListener('click', () => {
+      const blob = new Blob([engine.toMidi(session.score())], { type: 'audio/midi' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'ejemplo.mid';
+      a.click();
+    });
+  </script>
+</body>
+</html>

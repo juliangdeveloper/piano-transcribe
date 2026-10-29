@@ -108,6 +108,30 @@
       width: 18px;
       height: 18px;
     }
+    .score-settings {
+      display: flex;
+      gap: 10px;
+      padding: 8px 2px 2px;
+    }
+    .score-settings label {
+      flex: 1;
+      flex-direction: column;
+      align-items: stretch !important;
+      gap: 4px !important;
+      font-size: 12px !important;
+      color: var(--dim);
+      border-bottom: none !important;
+      padding: 0 !important;
+    }
+    .score-settings select {
+      appearance: none;
+      background: var(--bg);
+      color: var(--fg);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      font-size: 15px;
+      padding: 6px 10px;
+    }
     #midiStatus {
       font-size: 12px;
       color: var(--accent);
@@ -134,13 +158,36 @@
       border: 1px solid var(--line);
       overflow: hidden;
     }
+    .staff-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      padding: 6px 8px 0 10px;
+    }
     .staff-label {
       font-size: 11px;
       text-transform: uppercase;
       letter-spacing: 1.2px;
       color: #6b6358;
-      padding: 8px 10px 0;
+      white-space: nowrap;
     }
+    .export {
+      display: flex;
+      gap: 6px;
+    }
+    .export button {
+      appearance: none;
+      border: 1px solid #c9bfae;
+      background: #fffaf0;
+      color: #4a4338;
+      font-size: 12px;
+      font-weight: 700;
+      border-radius: 999px;
+      padding: 4px 10px;
+      cursor: pointer;
+    }
+    .export button:disabled { opacity: 0.4; cursor: default; }
     #staffWrap {
       overflow: auto;
       max-height: 46vh;
@@ -341,6 +388,10 @@
     <label><input type="radio" name="source" value="mic"> 🎤 Micrófono (transcribe todas las notas)</label>
     <label><input type="radio" name="source" value="midi"> 🎹 MIDI (USB / Bluetooth)</label>
     <label><input type="radio" name="source" value="line"> 🔌 Línea (cable)</label>
+    <div class="score-settings">
+      <label>Tempo<select id="tempo" aria-label="Tempo"></select></label>
+      <label>Compás<select id="timeSig" aria-label="Compás"></select></label>
+    </div>
     <div id="midiStatus"></div>
   </section>
 
@@ -366,7 +417,13 @@
     <div id="hint">Toca una nota de piano cerca del micrófono</div>
 
     <div id="staffPanel">
-      <div class="staff-label">Partitura · ♩=80 · 4/4</div>
+      <div class="staff-head">
+        <div class="staff-label" id="staffLabel">Partitura · ♩=80 · 4/4</div>
+        <div class="export">
+          <button id="btnMidi" type="button" disabled aria-label="Descargar MIDI">MIDI</button>
+          <button id="btnXml" type="button" disabled aria-label="Descargar MusicXML">MusicXML</button>
+        </div>
+      </div>
       <div id="staffWrap" aria-label="Partitura">
         <div id="staff"></div>
       </div>
@@ -380,10 +437,11 @@
     <span id="version"></span>
   </footer>
 
-  <script src="js/meta.js?v=1.12.13"></script>
-  <script src="js/progress.js?v=1.12.13"></script>
-  <script src="js/vexflow.js?v=1.12.13"></script>
-  <script src="js/staff.js?v=1.12.13"></script>
-  <script src="js/app.js?v=1.12.13"></script>
+  <script src="js/meta.js?v=1.13.0"></script>
+  <script src="js/progress.js?v=1.13.0"></script>
+  <script src="js/input.js?v=1.13.0"></script>
+  <script src="js/vexflow.js?v=1.13.0"></script>
+  <script src="js/staff.js?v=1.13.0"></script>
+  <script src="js/app.js?v=1.13.0"></script>
 </body>
 </html>

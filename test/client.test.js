@@ -10,7 +10,7 @@ const root = path.join(__dirname, '..');
 test('la interfaz carga /engine/v1/ y no los archivos internos', () => {
   const app = fs.readFileSync(path.join(root, 'js', 'app.js'), 'utf8');
   const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
-  const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
+  const example = fs.readFileSync(path.join(root, 'examples', 'minimal.html'), 'utf8');
   const url = 'https://juliangdeveloper.github.io/piano-transcribe/engine/v1/';
   assert.ok(app.includes(url), 'app.js usa el URL público');
   assert.ok(app.includes('capture.js?v='));
@@ -27,11 +27,11 @@ test('la interfaz carga /engine/v1/ y no los archivos internos', () => {
   assert.equal(/js\/pitch\.js/.test(html), false);
   assert.equal(/js\/score\.js/.test(html), false);
   assert.equal(/js\/gate\.js/.test(html), false);
-  assert.ok(html.includes('js/meta.js?v=1.12.13'));
-  assert.ok(html.includes('js/progress.js?v=1.12.13'));
-  assert.ok(html.includes('js/vexflow.js?v=1.12.13'));
-  assert.ok(html.includes('js/app.js?v=1.12.13'));
-  assert.ok(html.includes('js/staff.js?v=1.12.13'));
+  assert.ok(html.includes('js/meta.js?v=1.13.0'));
+  assert.ok(html.includes('js/progress.js?v=1.13.0'));
+  assert.ok(html.includes('js/vexflow.js?v=1.13.0'));
+  assert.ok(html.includes('js/app.js?v=1.13.0'));
+  assert.ok(html.includes('js/staff.js?v=1.13.0'));
   assert.ok(html.indexOf('js/vexflow.js') < html.indexOf('js/staff.js'));
   assert.ok(html.indexOf('js/staff.js') < html.indexOf('js/app.js'));
   assert.ok(html.indexOf('js/meta.js') < html.indexOf('js/progress.js'));
@@ -41,8 +41,9 @@ test('la interfaz carga /engine/v1/ y no los archivos internos', () => {
   assert.ok(app.includes('progress.captureNote'));
   assert.ok(app.includes('progress.endSession'));
   assert.ok(html.includes('piano-transcribe'));
-  assert.ok(readme.includes(url));
-  assert.ok(readme.includes('capture.js?v='));
+  assert.ok(example.includes(url + 'capture.js'));
+  assert.ok(html.includes('js/input.js?v=1.13.0'));
+  assert.ok(html.indexOf('js/input.js') < html.indexOf('js/app.js'));
 });
 
 test('VexFlow 5 core con la fuente Gonville local, sin dibujar antes de que cargue', () => {

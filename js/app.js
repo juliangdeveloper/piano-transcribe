@@ -3,8 +3,19 @@
 
   var ENGINE_ROOT = 'https://juliangdeveloper.github.io/piano-transcribe/engine/v1/';
   var ENGINE_KEY = 'piano-transcribe.engine';
-  var APP_VERSION = '1.12.13';
-  var SCORE = { bpm: 80, timeSig: '4/4', clef: 'treble' };
+  var APP_VERSION = '1.13.0';
+  var SCORE_DEFAULT = Object.freeze({ bpm: 80, timeSig: '4/4', clef: 'treble' });
+  var TEMPO_CHOICES = Object.freeze([60, 72, 80, 92, 100, 120, 144]);
+  var TIME_SIG_CHOICES = Object.freeze(['2/4', '3/4', '4/4', '6/8']);
+  var LS_SCORE = 'piano-transcribe.score';
+  var EXPORT = Object.freeze({
+    PREFIX: 'piano-transcribe',
+    MIDI: Object.freeze({ EXT: '.mid', TYPE: 'audio/midi' }),
+    XML: Object.freeze({ EXT: '.musicxml', TYPE: 'application/vnd.recordare.musicxml+xml' }),
+    TITLE: 'piano-transcribe',
+    REVOKE_MS: 1000
+  });
+  var SCORE = { bpm: SCORE_DEFAULT.bpm, timeSig: SCORE_DEFAULT.timeSig, clef: SCORE_DEFAULT.clef };
   var LATIN = ['Do', 'Do#', 'Re', 'Re#', 'Mi', 'Fa', 'Fa#', 'Sol', 'Sol#', 'La', 'La#', 'Si'];
   var NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
   var LS_KEY = 'piano-transcribe.source';
@@ -26,6 +37,11 @@
   var elStaff = document.getElementById('staff');
   var elStaffWrap = document.getElementById('staffWrap');
   var elVersion = document.getElementById('version');
+  var elStaffLabel = document.getElementById('staffLabel');
+  var elTempo = document.getElementById('tempo');
+  var elTimeSig = document.getElementById('timeSig');
+  var elExportMidi = document.getElementById('btnMidi');
+  var elExportXml = document.getElementById('btnXml');
 
   var engine = null;
   var session = null;
@@ -205,7 +221,7 @@
       beginMic(mediaStream);
     }).catch(function (err) {
       stop();
-      elHint.textContent = 'Permiso de micrófono denegado: ' + (err && err.name ? err.name : 'error');
+      elHint.textContent = window.Input.micErrorMessage(err);
     });
   }
 
@@ -222,7 +238,7 @@
     lp.frequency.value = 4000;
     lp.Q.value = 0.707;
     var preamp = ctx.createGain();
-    preamp.gain.value = (sourceMode === 'line') ? 1 : 4;
+    preamp.gain.value = window.Input.preampGain(sourceMode);
     analyser = ctx.createAnalyser();
     analyser.fftSize = 2048;
     analyser.smoothingTimeConstant = 0;
@@ -289,7 +305,7 @@
     navigator.requestMIDIAccess({ sysex: false }).then(function (access) {
       if (!running) return;
       midiAccess = access;
-      var input = pickMidiInput(access);
+      var input = window.Input.pickMidiInput(access);
       if (!input) {
         stop();
         elHint.textContent = 'Sin entrada MIDI — conectá el piano por USB o Bluetooth MIDI';
@@ -300,7 +316,7 @@
       input.onmidimessage = onMidiMessage;
       access.onstatechange = function () {
         if (!running || sourceMode !== 'midi') return;
-        var live = pickMidiInput(access);
+        var live = window.Input.pickMidiInput(access);
         if (live) {
           live.onmidimessage = onMidiMessage;
           midiInputName = live.name || 'MIDI';
@@ -322,26 +338,12 @@
     });
   }
 
-  function pickMidiInput(access) {
-    var first = null;
-    var inputs = access.inputs.values();
-    for (var it = inputs.next(); !it.done; it = inputs.next()) {
-      var inp = it.value;
-      if (inp.type === 'input') {
-        if (inp.connection === 'open') return inp;
-        if (!first) first = inp;
-      }
-    }
-    return first;
-  }
-
   function onMidiMessage(e) {
-    if (!session || !e.data || e.data.length < 2) return;
-    var status = e.data[0] & 0xf0;
-    var midiNum = e.data[1];
-    var velocity = e.data.length > 2 ? e.data[2] : 0;
+    var msg = window.Input.decodeMidi(e && e.data);
+    if (!session || !msg) return;
+    var midiNum = msg.midi;
     var now = performance.now();
-    if (status === 0x90 && velocity > 0) {
+    if (msg.type === 'on') {
       var on = session.press(midiNum, 'midi', now);
       if (on.events[0] && on.events[0].type === 'on') {
         var freq = null;
@@ -352,7 +354,7 @@
           if (progress) progress.captureNote(on.held.length);
         }
       }
-    } else if (status === 0x80 || (status === 0x90 && velocity === 0)) {
+    } else {
       var off = session.release(midiNum, 'midi', now);
       if (off.events[0] && off.events[0].released) {
         if (!off.held.length) renderOff();
@@ -381,14 +383,98 @@
     if (!VF || !window.Staff) return;
     var data = (session && typeof session.score === 'function')
       ? session.score()
-      : { clef: 'treble', timeSigStr: '4/4', measures: [{ notes: [] }] };
+      : { clef: SCORE.clef, timeSigStr: SCORE.timeSig, measures: [{ notes: [] }] };
     var innerW = (elStaffWrap && elStaffWrap.clientWidth) ? elStaffWrap.clientWidth : 358;
     elStaff.innerHTML = '';
     try {
       window.Staff.draw(VF, elStaff, data, innerW);
     } catch (err) {}
     if (elStaffWrap) elStaffWrap.scrollTop = elStaffWrap.scrollHeight;
+    renderExport(data);
   }
+
+  function scoreHasNotes(data) {
+    var measures = (data && data.measures) || [];
+    var i;
+    var j;
+    for (i = 0; i < measures.length; i++) {
+      var notes = measures[i].notes || [];
+      for (j = 0; j < notes.length; j++) if (!notes[j].rest) return true;
+    }
+    return false;
+  }
+
+  function renderExport(data) {
+    var ready = !!(engine && typeof engine.toMidi === 'function' && typeof engine.toMusicXML === 'function' && scoreHasNotes(data));
+    elExportMidi.disabled = !ready;
+    elExportXml.disabled = !ready;
+  }
+
+  function renderStaffLabel() {
+    elStaffLabel.textContent = 'Partitura · ♩=' + SCORE.bpm + ' · ' + SCORE.timeSig;
+  }
+
+  function loadScoreSettings() {
+    try {
+      var saved = JSON.parse(localStorage.getItem(LS_SCORE) || 'null');
+      if (saved && TEMPO_CHOICES.indexOf(saved.bpm) >= 0) SCORE.bpm = saved.bpm;
+      if (saved && TIME_SIG_CHOICES.indexOf(saved.timeSig) >= 0) SCORE.timeSig = saved.timeSig;
+    } catch (e) {}
+  }
+
+  function saveScoreSettings() {
+    try { localStorage.setItem(LS_SCORE, JSON.stringify({ bpm: SCORE.bpm, timeSig: SCORE.timeSig })); } catch (e) {}
+  }
+
+  function fillChoices(el, values, format) {
+    el.innerHTML = '';
+    values.forEach(function (v) {
+      var opt = document.createElement('option');
+      opt.value = String(v);
+      opt.textContent = format(v);
+      el.appendChild(opt);
+    });
+  }
+
+  function applyScoreSettings() {
+    renderStaffLabel();
+    if (session && typeof session.setScore === 'function') session.setScore({ bpm: SCORE.bpm, timeSig: SCORE.timeSig });
+    drawStaff();
+  }
+
+  function stamp() {
+    var d = new Date();
+    function two(n) { return (n < 10 ? '0' : '') + n; }
+    return d.getFullYear() + two(d.getMonth() + 1) + two(d.getDate()) + '-' + two(d.getHours()) + two(d.getMinutes());
+  }
+
+  function download(content, kind) {
+    var blob = new Blob([content], { type: kind.TYPE });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = EXPORT.PREFIX + '-' + stamp() + kind.EXT;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, EXPORT.REVOKE_MS);
+  }
+
+  function currentScore() {
+    return (session && typeof session.score === 'function') ? session.score() : null;
+  }
+
+  elExportMidi.addEventListener('click', function () {
+    var data = currentScore();
+    if (!engine || !scoreHasNotes(data)) return;
+    download(engine.toMidi(data), EXPORT.MIDI);
+  });
+
+  elExportXml.addEventListener('click', function () {
+    var data = currentScore();
+    if (!engine || !scoreHasNotes(data)) return;
+    download(engine.toMusicXML(data, { title: EXPORT.TITLE }), EXPORT.XML);
+  });
 
   function loadSource() {
     try {
@@ -407,6 +493,8 @@
     var radios = elSettings.querySelectorAll('input[name="source"]');
     var i;
     for (i = 0; i < radios.length; i++) radios[i].checked = (radios[i].value === sourceMode);
+    elTempo.value = String(SCORE.bpm);
+    elTimeSig.value = SCORE.timeSig;
     elBtnSettings.textContent = sourceMode === 'mic' ? '⚙ mic' : (sourceMode === 'midi' ? '⚙ midi' : '⚙ línea');
   }
 
@@ -425,6 +513,16 @@
       saveSource();
       renderSettings();
       renderMidiStatus();
+    }
+    if (e.target === elTempo) {
+      SCORE.bpm = parseInt(elTempo.value, 10) || SCORE_DEFAULT.bpm;
+      saveScoreSettings();
+      applyScoreSettings();
+    }
+    if (e.target === elTimeSig) {
+      SCORE.timeSig = elTimeSig.value || SCORE_DEFAULT.timeSig;
+      saveScoreSettings();
+      applyScoreSettings();
     }
   });
 
@@ -481,7 +579,11 @@
   elVersion.textContent = 'v' + APP_VERSION;
   elBtn.disabled = true;
   elHint.textContent = 'Cargando motor de notas…';
+  fillChoices(elTempo, TEMPO_CHOICES, function (v) { return '♩=' + v; });
+  fillChoices(elTimeSig, TIME_SIG_CHOICES, function (v) { return v; });
   loadSource();
+  loadScoreSettings();
+  renderStaffLabel();
   renderSettings();
   renderSettingsVisibility();
   renderMidiStatus();
@@ -491,6 +593,7 @@
   loadPianoEngine(ENGINE_ROOT).then(function (mod) {
     engine = mod;
     elBtn.disabled = false;
+    renderExport(currentScore());
     elHint.textContent = sourceMode === 'midi'
       ? 'Conecta el piano por USB o Bluetooth MIDI y toca Escuchar'
       : 'Toca una nota de piano cerca del micrófono';
