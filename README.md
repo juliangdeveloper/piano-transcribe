@@ -9,7 +9,7 @@
 <img src="docs/screenshot.png" alt="Demo de piano-transcribe escribiendo notas en un pentagrama" width="320">
 
 ## Usar el motor en tu proyecto
-El motor es un módulo ES sin DOM publicado en `engine/v1/`. Los cambios compatibles se publican ahí; uno incompatible irá a `engine/v2/`.
+El motor es un módulo ES sin DOM publicado en `engine/v1/`, con interfaz estable (`engine.INTERFACE` = 1).
 
 ```javascript
 const root = 'https://juliangdeveloper.github.io/piano-transcribe/engine/v1/';
@@ -54,7 +54,7 @@ const out = session.hop(frame, sampleRate, performance.now());
 - El tempo y el compás se eligen a mano; no se detectan.
 
 ## Contribuir
-El proyecto busca quien lo mejore y lo mantenga. Abre un issue o un PR, sobre todo en:
+Abre un issue o un PR. Áreas abiertas:
 - Probar y corregir la entrada MIDI (USB y Bluetooth) y la entrada de línea.
 - Polifonía y acordes más fiables.
 - Detectar tempo y compás a partir de lo que se toca.
