@@ -22,6 +22,8 @@ python3 -m http.server 8000   # http://localhost:8000
 npm test                       # Node, sin npm install
 ```
 
+Licencia: [MIT](LICENSE). Incluye VexFlow (MIT) y la fuente Gonville (uso libre).
+
 ## Relacionado
 🎹 [piano-magic](https://github.com/juliangdeveloper/piano-magic): combate RPG que se juega con el piano y usa este motor. [Jugar](https://juliangdeveloper.github.io/piano-magic/)
 
