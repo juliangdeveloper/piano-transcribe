@@ -151,7 +151,7 @@ function clarifyThresholdForMidi(midi, opts) {
 }
 
 var INTERFACE = 1;
-var VERSION = '1.12.13';
+var VERSION = '1.13.0';
 var HOP_MS = 20;
 
 var MIN_RUN = 2;
@@ -163,6 +163,9 @@ var VOTE_MIN = 2;
 var MIDI_8VB_BELOW = 48;
 var CHORD_WINDOW_MS = 40;
 var DEFAULT_BPM = 80;
+var TEMPO = Object.freeze({ MIN: 40, MAX: 208, DEFAULT: DEFAULT_BPM });
+var TIME_SIGNATURES = Object.freeze(['2/4', '3/4', '4/4', '6/8']);
+var DEFAULT_TIME_SIG = '4/4';
 
 var PROFILES = {
   combat: {
@@ -729,6 +732,7 @@ function packMeasures(items, cap) {
       copy.duration = proto.rest ? durType + 'r' : durType;
       copy.sixteenths = parts[p];
       copy.beats = parts[p] / 4;
+      copy.tie = !proto.rest && (p < parts.length - 1 || sixteenths - take > 0);
       measures[measures.length - 1].notes.push(copy);
       used += parts[p];
     }
@@ -1058,8 +1062,8 @@ function createCapture(options) {
     gateDb: options.gateDb == null ? profile.gateDb : options.gateDb,
     maxLagMode: options.maxLagMode || profile.maxLagMode,
     a4: (typeof options.a4 === 'number' && options.a4 > 0) ? options.a4 : 440,
-    bpm: options.score && options.score.bpm ? options.score.bpm : DEFAULT_BPM,
-    timeSig: options.score && options.score.timeSig ? options.score.timeSig : '4/4',
+    bpm: options.score && options.score.bpm ? clampTempo(options.score.bpm) : DEFAULT_BPM,
+    timeSig: options.score && options.score.timeSig ? validTimeSig(options.score.timeSig) : DEFAULT_TIME_SIG,
     clef: options.score && options.score.clef ? options.score.clef : 'treble',
     maxVoices: options.maxVoices >= 2 ? 2 : 1
   };
@@ -1083,6 +1087,13 @@ function createCapture(options) {
 
   function buildScore() {
     return eventsToScore(events, scoreOpts());
+  }
+
+  function setScore(next) {
+    next = next || {};
+    if (next.bpm !== undefined) cfg.bpm = clampTempo(next.bpm);
+    if (next.timeSig !== undefined) cfg.timeSig = validTimeSig(next.timeSig);
+    return buildScore();
   }
 
   function heldList() {
@@ -1346,15 +1357,278 @@ function createCapture(options) {
     releaseSource: releaseSource,
     reset: reset,
     score: buildScore,
+    setScore: setScore,
+    scoreOptions: scoreOpts,
     held: heldList
   };
 }
 
+function clampTempo(bpm) {
+  var n = Number(bpm);
+  if (!isFinite(n) || n <= 0) return DEFAULT_BPM;
+  return Math.min(TEMPO.MAX, Math.max(TEMPO.MIN, Math.round(n)));
+}
+
+var TIME_SIG_DENOMINATORS = Object.freeze([2, 4, 8, 16]);
+var TIME_SIG_MAX_BEATS = 16;
+
+function validTimeSig(str) {
+  var m = /^\s*(\d+)\s*\/\s*(\d+)\s*$/.exec(String(str || ''));
+  if (!m) return DEFAULT_TIME_SIG;
+  var num = parseInt(m[1], 10);
+  var den = parseInt(m[2], 10);
+  if (num < 1 || num > TIME_SIG_MAX_BEATS || TIME_SIG_DENOMINATORS.indexOf(den) < 0) return DEFAULT_TIME_SIG;
+  return num + '/' + den;
+}
+
+var SIXTEENTHS_PER_QUARTER = 4;
+var MIDI_FILE = Object.freeze({
+  PPQ: 480,
+  CHANNEL: 0,
+  VELOCITY: 80,
+  NOTE_ON: 0x90,
+  NOTE_OFF: 0x80,
+  META: 0xff,
+  META_TEMPO: 0x51,
+  META_TIME_SIG: 0x58,
+  META_END: 0x2f,
+  CLOCKS_PER_CLICK: 24,
+  THIRTY_SECONDS_PER_QUARTER: 8,
+  MICROS_PER_MINUTE: 60000000
+});
+var MUSICXML = Object.freeze({
+  VERSION: '4.0',
+  DIVISIONS: SIXTEENTHS_PER_QUARTER,
+  PART_ID: 'P1',
+  PART_NAME: 'Piano',
+  TREBLE_MIN_MIDI: 60,
+  TYPES: Object.freeze({ 16: 'whole', 8: 'half', 4: 'quarter', 2: 'eighth', 1: '16th' })
+});
+
+function scoreTimeSig(score) {
+  if (score && score.timeSig && score.timeSig.num) return score.timeSig;
+  return parseTimeSig(score && score.timeSigStr);
+}
+
+function scoreBpm(score) {
+  return clampTempo(score && score.bpm);
+}
+
+function scoreSounds(score) {
+  var out = [];
+  var cursor = 0;
+  var measures = (score && Array.isArray(score.measures)) ? score.measures : [];
+  var cap = measureSixteenths(scoreTimeSig(score));
+  var carry = null;
+  var mi;
+  var ni;
+  for (mi = 0; mi < measures.length; mi++) {
+    var start = mi * cap;
+    if (cursor < start) cursor = start;
+    var notes = measures[mi].notes || [];
+    for (ni = 0; ni < notes.length; ni++) {
+      var n = notes[ni];
+      var len = n.sixteenths || 0;
+      if (!n.rest && n.midis && n.midis.length) {
+        if (carry && sameMidis(carry.midis, n.midis)) {
+          carry.length += len;
+        } else {
+          carry = { midis: n.midis.slice(), start: cursor, length: len };
+          out.push(carry);
+        }
+        if (!n.tie) carry = null;
+      } else {
+        carry = null;
+      }
+      cursor += len;
+    }
+  }
+  return out;
+}
+
+function varLength(n) {
+  var bytes = [n & 0x7f];
+  n = Math.floor(n / 128);
+  while (n > 0) {
+    bytes.unshift((n & 0x7f) | 0x80);
+    n = Math.floor(n / 128);
+  }
+  return bytes;
+}
+
+function u32(n) {
+  return [(n >>> 24) & 0xff, (n >>> 16) & 0xff, (n >>> 8) & 0xff, n & 0xff];
+}
+
+function u16(n) {
+  return [(n >>> 8) & 0xff, n & 0xff];
+}
+
+function toMidi(score) {
+  var ts = scoreTimeSig(score);
+  var tickPer16 = MIDI_FILE.PPQ / SIXTEENTHS_PER_QUARTER;
+  var micros = Math.round(MIDI_FILE.MICROS_PER_MINUTE / scoreBpm(score));
+  var timed = [];
+  scoreSounds(score).forEach(function (snd) {
+    var on = snd.start * tickPer16;
+    var off = (snd.start + snd.length) * tickPer16;
+    snd.midis.forEach(function (midi) {
+      timed.push({ tick: off, order: 0, bytes: [MIDI_FILE.NOTE_OFF | MIDI_FILE.CHANNEL, midi, 0] });
+      timed.push({ tick: on, order: 1, bytes: [MIDI_FILE.NOTE_ON | MIDI_FILE.CHANNEL, midi, MIDI_FILE.VELOCITY] });
+    });
+  });
+  timed.sort(function (a, b) { return a.tick - b.tick || a.order - b.order; });
+  var track = [0, MIDI_FILE.META, MIDI_FILE.META_TEMPO, 3, (micros >>> 16) & 0xff, (micros >>> 8) & 0xff, micros & 0xff];
+  track = track.concat([0, MIDI_FILE.META, MIDI_FILE.META_TIME_SIG, 4, ts.num, Math.round(Math.log2(ts.den)), MIDI_FILE.CLOCKS_PER_CLICK, MIDI_FILE.THIRTY_SECONDS_PER_QUARTER]);
+  var last = 0;
+  timed.forEach(function (ev) {
+    track = track.concat(varLength(ev.tick - last), ev.bytes);
+    last = ev.tick;
+  });
+  track = track.concat([0, MIDI_FILE.META, MIDI_FILE.META_END, 0]);
+  var head = [0x4d, 0x54, 0x68, 0x64].concat(u32(6), u16(0), u16(1), u16(MIDI_FILE.PPQ));
+  var chunk = [0x4d, 0x54, 0x72, 0x6b].concat(u32(track.length), track);
+  return new Uint8Array(head.concat(chunk));
+}
+
+function xmlEscape(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function xmlPitch(midi) {
+  var p = parsePitch(midi);
+  var step = p.note.charAt(0);
+  var alter = p.note.charAt(1) === '#' ? '<alter>1</alter>' : '';
+  return '<pitch><step>' + step + '</step>' + alter + '<octave>' + p.octave + '</octave></pitch>';
+}
+
+function xmlNote(n, midi, chord, tieStop) {
+  var parts = ['<note>'];
+  if (chord) parts.push('<chord/>');
+  parts.push(xmlPitch(midi));
+  parts.push('<duration>' + n.sixteenths + '</duration>');
+  if (tieStop) parts.push('<tie type="stop"/>');
+  if (n.tie) parts.push('<tie type="start"/>');
+  parts.push('<voice>1</voice>');
+  if (MUSICXML.TYPES[n.sixteenths]) parts.push('<type>' + MUSICXML.TYPES[n.sixteenths] + '</type>');
+  if (parsePitch(midi).note.charAt(1) === '#') parts.push('<accidental>sharp</accidental>');
+  if (tieStop || n.tie) {
+    parts.push('<notations>' + (tieStop ? '<tied type="stop"/>' : '') + (n.tie ? '<tied type="start"/>' : '') + '</notations>');
+  }
+  parts.push('</note>');
+  return parts.join('');
+}
+
+function xmlRest(n) {
+  var type = MUSICXML.TYPES[n.sixteenths] ? '<type>' + MUSICXML.TYPES[n.sixteenths] + '</type>' : '';
+  return '<note><rest/><duration>' + n.sixteenths + '</duration><voice>1</voice>' + type + '</note>';
+}
+
+function scoreClef(score) {
+  var measures = (score && Array.isArray(score.measures)) ? score.measures : [];
+  var any = false;
+  var mi;
+  var ni;
+  for (mi = 0; mi < measures.length; mi++) {
+    var notes = measures[mi].notes || [];
+    for (ni = 0; ni < notes.length; ni++) {
+      var midis = notes[ni].midis || [];
+      var k;
+      for (k = 0; k < midis.length; k++) {
+        any = true;
+        if (midis[k] >= MUSICXML.TREBLE_MIN_MIDI) return 'treble';
+      }
+    }
+  }
+  return any ? 'bass' : 'treble';
+}
+
+function toMusicXML(score, opts) {
+  opts = opts || {};
+  var ts = scoreTimeSig(score);
+  var bpm = scoreBpm(score);
+  var cap = measureSixteenths(ts);
+  var clef = scoreClef(score) === 'bass' ? '<clef><sign>F</sign><line>4</line></clef>' : '<clef><sign>G</sign><line>2</line></clef>';
+  var measures = (score && Array.isArray(score.measures) && score.measures.length) ? score.measures : [{ notes: [] }];
+  var out = [
+    '<?xml version="1.0" encoding="UTF-8" standalone="no"?>',
+    '<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML ' + MUSICXML.VERSION + ' Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">',
+    '<score-partwise version="' + MUSICXML.VERSION + '">'
+  ];
+  if (opts.title) out.push('<work><work-title>' + xmlEscape(opts.title) + '</work-title></work>');
+  out.push('<part-list><score-part id="' + MUSICXML.PART_ID + '"><part-name>' + MUSICXML.PART_NAME + '</part-name></score-part></part-list>');
+  out.push('<part id="' + MUSICXML.PART_ID + '">');
+  var prevTie = false;
+  measures.forEach(function (m, mi) {
+    out.push('<measure number="' + (mi + 1) + '">');
+    if (mi === 0) {
+      out.push('<attributes><divisions>' + MUSICXML.DIVISIONS + '</divisions><key><fifths>0</fifths></key><time><beats>' + ts.num + '</beats><beat-type>' + ts.den + '</beat-type></time>' + clef + '</attributes>');
+      out.push('<direction placement="above"><direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>' + bpm + '</per-minute></metronome></direction-type><sound tempo="' + bpm + '"/></direction>');
+    }
+    var notes = m.notes || [];
+    var used = 0;
+    if (!notes.length) {
+      out.push('<note><rest measure="yes"/><duration>' + cap + '</duration><voice>1</voice></note>');
+      prevTie = false;
+    }
+    notes.forEach(function (n) {
+      if (n.rest || !n.midis || !n.midis.length) {
+        out.push(xmlRest(n));
+        prevTie = false;
+      } else {
+        n.midis.forEach(function (midi, k) { out.push(xmlNote(n, midi, k > 0, prevTie)); });
+        prevTie = !!n.tie;
+      }
+      used += n.sixteenths || 0;
+    });
+    if (notes.length && used < cap) out.push(xmlRest({ sixteenths: cap - used }));
+    out.push('</measure>');
+  });
+  out.push('</part>');
+  out.push('</score-partwise>');
+  return out.join('\n');
+}
+
+var API = Object.freeze({
+  name: 'piano-transcribe/engine',
+  interface: INTERFACE,
+  version: VERSION,
+  entry: 'createCapture',
+  tempo: TEMPO,
+  timeSignatures: TIME_SIGNATURES
+});
+
+var engine = Object.freeze({
+  INTERFACE: INTERFACE,
+  VERSION: VERSION,
+  API: API,
+  HOP_MS: HOP_MS,
+  TEMPO: TEMPO,
+  TIME_SIGNATURES: TIME_SIGNATURES,
+  createCapture: createCapture,
+  toMidi: toMidi,
+  toMusicXML: toMusicXML,
+  detectPitch: detectPitch,
+  noteFromFreq: noteFromFreq,
+  noteFromMidi: noteFromMidi,
+  hzForNote: hzForNote,
+  sessionType: sessionType,
+  denyMessage: denyMessage,
+  statusLine: statusLine
+});
+
+export default engine;
+
 export {
   INTERFACE,
   VERSION,
+  API,
   HOP_MS,
+  TEMPO,
+  TIME_SIGNATURES,
   createCapture,
+  toMidi,
+  toMusicXML,
   detectPitch,
   noteFromFreq,
   noteFromMidi,

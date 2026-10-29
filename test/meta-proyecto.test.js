@@ -85,9 +85,9 @@ test('an old record without proyecto is still valid and gains the block on open'
   assert.deepStrictEqual(rec.logros, ['first_note']);
   assert.strictEqual(rec.stats.sessions, 7);
   assert.deepStrictEqual(rec.proyecto, Object.assign({}, Meta.PROYECTO));
-  assert.strictEqual(rec.proyecto.fase, 4);
-  assert.strictEqual(rec.proyecto.fase_estado, 2);
-  assert.strictEqual(rec.proyecto.fases_completadas, 3);
+  assert.strictEqual(rec.proyecto.fase, 6);
+  assert.strictEqual(rec.proyecto.fase_estado, 1);
+  assert.strictEqual(rec.proyecto.fases_completadas, 5);
 });
 
 test('backfill rewrites a different fase and keeps stats, logros and hitos', () => {
@@ -102,9 +102,9 @@ test('backfill rewrites a different fase and keeps stats, logros and hitos', () 
   const storage = mem({ [KEY]: JSON.stringify(old) });
   const rec = backfill(storage);
   assert.deepStrictEqual(rec.proyecto, Object.assign({}, Meta.PROYECTO));
-  assert.strictEqual(rec.proyecto.fase, Meta.FASE.CONSTRUCCION);
-  assert.strictEqual(rec.proyecto.fase_estado, Meta.ESTADO_FASE.BLOQUEADA);
-  assert.strictEqual(rec.proyecto.fases_completadas, 3);
+  assert.strictEqual(rec.proyecto.fase, Meta.FASE.LANZAMIENTO_Y_MANTENIMIENTO);
+  assert.strictEqual(rec.proyecto.fase_estado, Meta.ESTADO_FASE.EN_CURSO);
+  assert.strictEqual(rec.proyecto.fases_completadas, 5);
   assert.strictEqual(rec.proyecto.objetivo, Meta.PROYECTO.objetivo);
   assert.strictEqual(rec.stats.sessions, 4);
   assert.strictEqual(rec.stats.notes_captured_total, 9);

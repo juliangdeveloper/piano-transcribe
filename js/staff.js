@@ -20,6 +20,8 @@
   var OTTAVA_GROUP = 'ottava';
   var SIXTEENTHS = Object.freeze({ w: 16, h: 8, q: 4, '8': 2, '16': 1 });
   var BEAT_SIXTEENTHS = 4;
+  var DEFAULT_TIME_SIG = '4/4';
+  var BEAT_DEFAULT = Object.freeze({ NUM: 4, VALUE: 4 });
   var PITCH_CLASSES = ['c', 'c#', 'd', 'd#', 'e', 'f', 'f#', 'g', 'g#', 'a', 'a#', 'b'];
   var LAYOUT = Object.freeze({
     LEFT_X: 18,
@@ -170,8 +172,15 @@
     });
   }
 
-  function makeVoice(VF, notes) {
-    var voice = new VF.Voice({ numBeats: 4, beatValue: 4 });
+  function voiceTime(timeSig) {
+    var parts = String(timeSig || DEFAULT_TIME_SIG).split('/');
+    var num = parseInt(parts[0], 10);
+    var den = parseInt(parts[1], 10);
+    return { numBeats: num > 0 ? num : BEAT_DEFAULT.NUM, beatValue: den > 0 ? den : BEAT_DEFAULT.VALUE };
+  }
+
+  function makeVoice(VF, notes, timeSig) {
+    var voice = new VF.Voice(voiceTime(timeSig));
     voice.setMode(VF.Voice.Mode.SOFT);
     voice.addTickables(notes);
     return voice;
@@ -244,7 +253,7 @@
       var notes = buildNotes(VF, plans, part.clef);
       beams = beams.concat(makeBeams(VF, notes, timeSig));
       ottavas = ottavas.concat(makeOttavas(VF, notes, plans));
-      voices.push(makeVoice(VF, notes));
+      voices.push(makeVoice(VF, notes, timeSig));
     });
     var formatter = new VF.Formatter();
     voices.forEach(function (v) { formatter.joinVoices([v]); });
@@ -314,7 +323,7 @@
 
   function draw(VF, el, data, innerWidth) {
     var measures = (data && data.measures && data.measures.length) ? data.measures : [{ notes: [] }];
-    var timeSig = (data && data.timeSigStr) || '4/4';
+    var timeSig = (data && data.timeSigStr) || DEFAULT_TIME_SIG;
     var kinds = measures.map(function (m) { return staffKind(measureMidis(m)); });
     var box = layout(VF, measures, kinds, timeSig, innerWidth);
     var renderer = new VF.Renderer(el, VF.Renderer.Backends.SVG);

@@ -19,10 +19,10 @@
   var TIPO_PROYECTO = Object.freeze({ PROYECTO: 'proyecto', AREA: 'area', RECURSO: 'recurso', ARCHIVO: 'archivo' });
 
   var PROYECTO = {
-    objetivo: 'Motor de notas open source para mis apps y app web pública de transcripción de piano en vivo.',
-    fase: FASE.CONSTRUCCION,
-    fase_estado: ESTADO_FASE.BLOQUEADA,
-    fases_completadas: 3,
+    objetivo: 'Motor open source de captura y escritura musical, mantenido por la comunidad',
+    fase: FASE.LANZAMIENTO_Y_MANTENIMIENTO,
+    fase_estado: ESTADO_FASE.EN_CURSO,
+    fases_completadas: 5,
     tipo: TIPO_PROYECTO.RECURSO
   };
 

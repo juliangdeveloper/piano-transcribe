@@ -10,7 +10,7 @@ const SLUG = 'piano-transcribe';
 const KEY = 'meta.v1.piano-transcribe';
 const CORRUPT = 'meta.v1.piano-transcribe.corrupt';
 const WHEN = new Date('2026-10-23T18:00:00.000Z');
-const VERSION = '1.12.13';
+const VERSION = '1.13.0';
 
 function memoryStorage(initial) {
   const data = Object.assign({}, initial || {});
@@ -607,9 +607,9 @@ test('al cargar, una fase distinta se reemplaza y la siguiente toma no borra los
   });
   const loaded = tracker.load();
   assert.deepStrictEqual(loaded.proyecto, Object.assign({}, Meta.PROYECTO));
-  assert.strictEqual(loaded.proyecto.fase, 4);
-  assert.strictEqual(loaded.proyecto.fase_estado, 2);
-  assert.strictEqual(loaded.proyecto.fases_completadas, 3);
+  assert.strictEqual(loaded.proyecto.fase, 6);
+  assert.strictEqual(loaded.proyecto.fase_estado, 1);
+  assert.strictEqual(loaded.proyecto.fases_completadas, 5);
   assert.deepStrictEqual(loaded.stats, old.stats);
   assert.deepStrictEqual(loaded.logros, old.logros);
   assert.deepStrictEqual(loaded.hitos, old.hitos);
