@@ -27,11 +27,11 @@ test('la interfaz carga /engine/v1/ y no los archivos internos', () => {
   assert.equal(/js\/pitch\.js/.test(html), false);
   assert.equal(/js\/score\.js/.test(html), false);
   assert.equal(/js\/gate\.js/.test(html), false);
-  assert.ok(html.includes('js/meta.js?v=1.13.1'));
-  assert.ok(html.includes('js/progress.js?v=1.13.1'));
-  assert.ok(html.includes('js/vexflow.js?v=1.13.1'));
-  assert.ok(html.includes('js/app.js?v=1.13.1'));
-  assert.ok(html.includes('js/staff.js?v=1.13.1'));
+  assert.ok(html.includes('js/meta.js?v=1.13.2'));
+  assert.ok(html.includes('js/progress.js?v=1.13.2'));
+  assert.ok(html.includes('js/vexflow.js?v=1.13.2'));
+  assert.ok(html.includes('js/app.js?v=1.13.2'));
+  assert.ok(html.includes('js/staff.js?v=1.13.2'));
   assert.ok(html.indexOf('js/vexflow.js') < html.indexOf('js/staff.js'));
   assert.ok(html.indexOf('js/staff.js') < html.indexOf('js/app.js'));
   assert.ok(html.indexOf('js/meta.js') < html.indexOf('js/progress.js'));
@@ -42,7 +42,7 @@ test('la interfaz carga /engine/v1/ y no los archivos internos', () => {
   assert.ok(app.includes('progress.endSession'));
   assert.ok(html.includes('piano-transcribe'));
   assert.ok(example.includes(url + 'capture.js'));
-  assert.ok(html.includes('js/input.js?v=1.13.1'));
+  assert.ok(html.includes('js/input.js?v=1.13.2'));
   assert.ok(html.indexOf('js/input.js') < html.indexOf('js/app.js'));
 });
 

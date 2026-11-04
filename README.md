@@ -4,9 +4,9 @@
 
 > Motor open source de captura y escritura musical para la web: convierte lo que tocas en el piano (micrófono, MIDI o entrada de línea) en notas y partitura, en vivo y en el dispositivo.
 
-**[▶ Probar la demo](https://juliangdeveloper.github.io/piano-transcribe/)** · la interfaz es una demo del motor
+**[▶ Abrir la app](https://juliangdeveloper.github.io/piano-transcribe/)**
 
-<img src="docs/screenshot.png" alt="Demo de piano-transcribe escribiendo notas en un pentagrama" width="320">
+<img src="docs/screenshot.png" alt="piano-transcribe escribiendo notas en un pentagrama" width="320">
 
 ## Usar el motor en tu proyecto
 El motor es un módulo ES sin DOM publicado en `engine/v1/`, con interfaz estable (`engine.INTERFACE` = 1).
@@ -39,12 +39,12 @@ const out = session.hop(frame, sampleRate, performance.now());
 | `noteFromFreq` · `noteFromMidi` · `hzForNote` | Convierten entre Hz, número MIDI y nombre de nota. |
 | `TEMPO` · `TIME_SIGNATURES` | Tempo de 40 a 208 y compases 2/4, 3/4, 4/4 y 6/8. |
 
-## La demo
+## La app
 - Pulsa **Escuchar** y en ⚙ elige micrófono, MIDI o entrada de línea.
 - En ⚙ eliges también el tempo (♩=60 a 144) y el compás (2/4, 3/4, 4/4 o 6/8).
 - Arriba ves la nota, los cents y la claridad; abajo, la partitura en clave de sol, de fa o en pentagrama doble.
 - **MIDI** y **MusicXML** descargan lo que tocaste.
-- Si el micrófono falla o no tiene permiso, la demo dice por qué.
+- Si el micrófono falla o no tiene permiso, la app dice por qué.
 - **Parar** deja la partitura; al volver a escuchar empieza de cero.
 
 ## Estado y límites
@@ -62,6 +62,7 @@ Abre un issue o un PR. Áreas abiertas:
 
 ## Stack
 JavaScript vanilla, Web Audio y Web MIDI; la partitura se dibuja con VexFlow. Sin dependencias de npm.
+Al abrirse guarda el progreso en `localStorage` (`meta.v1.piano-transcribe`), que lee el [portafolio](https://juliangdeveloper.github.io/).
 
 ```
 python3 -m http.server 8000

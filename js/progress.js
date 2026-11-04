@@ -63,29 +63,14 @@
     return { stats: stats, logros: logrosFor(stats) };
   }
 
-  function locationSearch(win) {
-    try {
-      if (!win && typeof window !== 'undefined') win = window;
-      if (win && win.location && typeof win.location.search === 'string') return win.location.search;
-    } catch (e) {}
-    return '';
-  }
-
-  function searchIsDemo(search) {
-    return /(?:^|[?&])demo=(?:1|true)(?:&|$)/.test(search || '')
-      || /(?:^|[?&])preview=(?:1|true)(?:&|$)/.test(search || '');
-  }
-
   function createTracker(opts) {
     opts = opts || {};
     var version = opts.version || '';
-    var demo = opts.demo === true || searchIsDemo(locationSearch(opts.window));
     var envBase = {
       localStorage: opts.localStorage,
       now: opts.now,
       window: opts.window,
-      declared: STATS,
-      demo: demo
+      declared: STATS
     };
     var clock = typeof opts.clock === 'function' ? opts.clock : function () { return Date.now(); };
     var setTimer = typeof opts.setTimer === 'function' ? opts.setTimer : function (fn, ms) {
@@ -131,7 +116,6 @@
         localStorage: envBase.localStorage,
         window: envBase.window,
         declared: STATS,
-        demo: demo,
         force: force === true,
         now: envBase.now != null ? envBase.now : new Date(ms),
         nowMs: ms
@@ -139,7 +123,7 @@
     }
 
     function commit(force) {
-      if (demo || !dirty || !Meta || typeof Meta.metaUpdate !== 'function') return null;
+      if (!dirty || !Meta || typeof Meta.metaUpdate !== 'function') return null;
       var before = readRaw();
       var record = Meta.metaUpdate(SLUG, version, {
         stats: snapshot(),
@@ -163,7 +147,6 @@
     }
 
     function schedule() {
-      if (demo) return;
       dirty = true;
       var elapsed = clock() - lastWrite;
       if (elapsed >= WRITE_MS) {
@@ -189,22 +172,29 @@
       }
     }
 
+    function declararProyecto() {
+      try {
+        if (Meta && typeof Meta.metaDeclararProyecto === 'function') Meta.metaDeclararProyecto(SLUG, version);
+      } catch (e) {
+      }
+    }
+
     return {
       load: function () {
-        if (demo) return null;
         var before = readRaw();
         var record = null;
         if (Meta && typeof Meta.metaBackfill === 'function') {
           record = Meta.metaBackfill(SLUG, version, deriveLegacy, callEnv());
         }
         applyRecord(record);
+        declararProyecto();
         if (before !== readRaw()) lastWrite = clock();
         else lastWrite = clock() - WRITE_MS;
         dirty = false;
         return record;
       },
       beginSession: function () {
-        if (demo || sessionOpen) return;
+        if (sessionOpen) return;
         sessionOpen = true;
         sessionNotes = 0;
         chordLive = false;
@@ -212,7 +202,7 @@
         schedule();
       },
       endSession: function () {
-        if (demo || !sessionOpen) return;
+        if (!sessionOpen) return;
         sessionOpen = false;
         chordLive = false;
         if (sessionNotes > stats.longest_session_notes) {
@@ -221,7 +211,6 @@
         schedule();
       },
       captureNote: function (heldCount) {
-        if (demo) return;
         var held = typeof heldCount === 'number' && isFinite(heldCount) ? heldCount : 1;
         stats.notes_captured_total += 1;
         if (sessionOpen) {
@@ -244,7 +233,7 @@
         return snapshot();
       },
       flush: function () {
-        if (demo || !dirty) return null;
+        if (!dirty) return null;
         if (timer) {
           clearTimer(timer);
           timer = 0;
