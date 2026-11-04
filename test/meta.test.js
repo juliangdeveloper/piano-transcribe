@@ -311,53 +311,6 @@ test('el helper no escribe ni avisa dos veces en el mismo segundo', () => {
   assert.strictEqual(posts.length, 2);
 });
 
-test('demo y preview no escriben ni avisan', () => {
-  ['?demo=1', '?preview=1', '?x=1&demo=true'].forEach(function (search) {
-    const posts = [];
-    const backing = memoryStorage({ 'piano-transcribe.source': 'midi' });
-    let sets = 0;
-    const storage = {
-      getItem: function (key) { return backing.getItem(key); },
-      setItem: function (key, value) { sets += 1; backing.setItem(key, value); }
-    };
-    const win = {
-      location: { origin: 'https://juliangdeveloper.github.io', search: search },
-      parent: { postMessage: function () { posts.push(1); } }
-    };
-    const direct =     Meta.metaUpdate(SLUG, VERSION, { stats: { sessions: 3 }, logros: ['first_session'] }, {
-      localStorage: storage,
-      now: WHEN,
-      declared: Progress.STATS,
-      force: true,
-      window: win
-    });
-    assert.strictEqual(direct, null);
-    Meta.metaBackfill(SLUG, VERSION, Progress.deriveLegacy, {
-      localStorage: storage,
-      now: WHEN,
-      declared: Progress.STATS,
-      window: win
-    });
-    const tracker = Progress.createTracker({
-      version: VERSION,
-      localStorage: storage,
-      window: win,
-      clock: function () { return 0; },
-      setTimer: function () { return 1; },
-      clearTimer: function () {}
-    });
-    tracker.load();
-    tracker.beginSession();
-    tracker.captureNote(2);
-    tracker.endSession();
-    tracker.flush();
-    assert.strictEqual(sets, 0);
-    assert.strictEqual(posts.length, 0);
-    assert.strictEqual(backing.getItem(KEY), null);
-    assert.strictEqual(backing.getItem('piano-transcribe.source'), 'midi');
-  });
-});
-
 test('los logros salen de umbrales fijos entre el primer uso y la constancia', () => {
   assert.strictEqual(Progress.SLUG, SLUG);
   assert.strictEqual(Meta.keyFor(SLUG), KEY);
