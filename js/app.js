@@ -3,7 +3,7 @@
 
   var ENGINE_ROOT = 'https://juliangdeveloper.github.io/piano-transcribe/engine/v1/';
   var ENGINE_KEY = 'piano-transcribe.engine';
-  var APP_VERSION = '1.13.0';
+  var APP_VERSION = '1.13.1';
   var SCORE_DEFAULT = Object.freeze({ bpm: 80, timeSig: '4/4', clef: 'treble' });
   var TEMPO_CHOICES = Object.freeze([60, 72, 80, 92, 100, 120, 144]);
   var TIME_SIG_CHOICES = Object.freeze(['2/4', '3/4', '4/4', '6/8']);
