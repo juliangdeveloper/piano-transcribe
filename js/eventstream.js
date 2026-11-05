@@ -13,9 +13,7 @@
   var MERGE_GAP_HOPS = 3;
   var MAX_VOICES = 2;
   var CHORD_MIN_RUN = 3;
-  var REATTACK_MIN_GAP_MS = 130;
   var RESONANCE_MS = 400;
-  var NEIGHBOR_MERGE_MS = 120;
 
   function create() {
     return {
