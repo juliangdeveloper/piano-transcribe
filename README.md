@@ -6,7 +6,7 @@
 
 **[▶ Abrir la app](https://juliangdeveloper.github.io/piano-transcribe/)**
 
-<img src="docs/screenshot.png" alt="piano-transcribe escribiendo notas en un pentagrama" width="320">
+<img src="assets/screenshot.png" alt="piano-transcribe escribiendo notas en un pentagrama" width="320">
 
 ## Usar el motor en tu proyecto
 El motor es un módulo ES sin DOM publicado en `engine/v1/`, con interfaz estable (`engine.INTERFACE` = 1).
