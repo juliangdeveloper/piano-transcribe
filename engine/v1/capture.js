@@ -143,13 +143,6 @@ function noteFromMidi(midi) {
   };
 }
 
-function clarifyThresholdForMidi(midi, opts) {
-  var strict = 0.90, relaxed = 0.78;
-  if (opts && typeof opts.strict === 'number') strict = opts.strict;
-  if (opts && typeof opts.relaxed === 'number') relaxed = opts.relaxed;
-  return midi >= 72 ? relaxed : strict;
-}
-
 var INTERFACE = 1;
 var VERSION = '1.13.0';
 var HOP_MS = 20;
