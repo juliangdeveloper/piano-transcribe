@@ -153,10 +153,19 @@ test('Web MIDI simulado: el teclado escribe notas y acordes sin hardware', async
   assert.ok(mod.toMusicXML(session.score()).includes('<chord/>'));
 });
 
-test('La menor (A3 C4 E4) se escribe con sus tres notas y sin G#3 fantasma', { todo: 'reportado en piano real; la síntesis aún no reproduce el G#3 y hoy se pierde el C4' }, async () => {
+test('La menor (A3 C4 E4) detecta las tres notas y no escribe un G#3 fantasma', async () => {
   const mod = await engine();
   const session = mod.createCapture({ profile: 'score', maxVoices: 2 });
   const run = play(mod, session, [[57, 60, 64]], { hops: 50 });
   assert.ok(!run.ons.includes('G#3'));
+  assert.ok(run.ons.includes('A3'));
+  assert.ok(run.ons.includes('C4'));
+  assert.ok(run.ons.includes('E4'));
+});
+
+test('La menor no duplica el E4', { todo: 'el acorde sale A3, E4, C4, E4' }, async () => {
+  const mod = await engine();
+  const session = mod.createCapture({ profile: 'score', maxVoices: 2 });
+  const run = play(mod, session, [[57, 60, 64]], { hops: 50 });
   assert.deepStrictEqual(run.ons.slice().sort(), ['A3', 'C4', 'E4']);
 });

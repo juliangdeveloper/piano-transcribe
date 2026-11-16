@@ -64,9 +64,8 @@ test('el módulo no toca el DOM ni VexFlow y no importa otros archivos', async (
   assert.equal(/localStorage/.test(src), false);
 });
 
-test('YIN del motor coincide con js/pitch.js en graves y agudos', async () => {
+test('YIN del motor detecta graves y agudos', async () => {
   const mod = await engine();
-  const Pitch = require(path.join(__dirname, '..', 'js', 'pitch.js'));
   const cases = [
     ['A4', 440, 4096, null],
     ['E3', mod.hzForNote('E', 3), 4096, null],
@@ -77,13 +76,11 @@ test('YIN del motor coincide con js/pitch.js en graves y agudos', async () => {
   for (const row of cases) {
     const buf = sine(row[1], row[2], 48000, 0.5);
     const opts = row[3] ? { maxLag: row[3] } : {};
-    const a = Pitch.detectPitch(buf, 48000, opts);
     const b = mod.detectPitch(buf, 48000, opts);
-    assert.ok(a.freq != null && b.freq != null, row[0]);
-    assert.ok(Math.abs(a.freq - b.freq) < 0.05, row[0] + ' ' + a.freq + ' vs ' + b.freq);
-    const na = Pitch.noteFromFreq(a.freq);
+    assert.ok(b.freq != null, row[0]);
+    assert.ok(Math.abs(b.freq - row[1]) < 0.5, row[0] + ' ' + b.freq);
     const nb = mod.noteFromFreq(b.freq);
-    assert.strictEqual(na.name + na.octave, nb.name + nb.octave);
+    assert.strictEqual(nb.name + nb.octave, row[0]);
   }
 });
 

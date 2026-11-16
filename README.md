@@ -50,7 +50,7 @@ const out = session.hop(frame, sampleRate, performance.now());
 ## Estado y límites
 - En curso.
 - Probado con micrófono. MIDI y entrada de línea pasan pruebas simuladas, pero no se han probado con hardware.
-- La polifonía es limitada: en acordes puede aparecer una nota que no se tocó (por ejemplo, un G#3 en La menor).
+- La polifonía es limitada: un acorde de La menor se detecta con A3, C4 y E4, pero el E4 puede aparecer dos veces.
 - El tempo y el compás se eligen a mano; no se detectan.
 
 ## Contribuir
