@@ -144,7 +144,7 @@ function noteFromMidi(midi) {
 }
 
 var INTERFACE = 1;
-var VERSION = '1.14.0';
+var VERSION = '1.14.1';
 var HOP_MS = 20;
 
 var MIN_RUN = 2;
@@ -200,6 +200,9 @@ function createMicState() {
     recentHighAge: 0,
     lowRun: 0,
     lowMidi: null,
+    latchHigh: null,
+    latchPitch: null,
+    latchLeft: 0,
     slots: [blankVoice(), blankVoice()]
   };
 }
@@ -221,6 +224,9 @@ function resetMicState(st) {
   st.recentHighAge = 0;
   st.lowRun = 0;
   st.lowMidi = null;
+  st.latchHigh = null;
+  st.latchPitch = null;
+  st.latchLeft = 0;
   st.slots = [blankVoice(), blankVoice()];
 }
 
@@ -242,9 +248,11 @@ function acceptNote(note, clarity, opts) {
   var relaxed = opts.relaxed == null ? 0.6 : opts.relaxed;
   if (!note || typeof note.midi !== 'number') return null;
   if (note.midi < minMidi || note.midi > maxMidi) return null;
+  if (note.midi >= 84 && maxCents < 60) maxCents = 60;
   if (typeof note.cents === 'number' && Math.abs(note.cents) > maxCents) return null;
   var th = note.midi >= 72 ? relaxed : strict;
   if (note.midi >= 72 && th > 0.55) th = 0.55;
+  if (opts.attack && note.midi >= 80 && th > 0.4) th = 0.4;
   if (typeof clarity === 'number' && clarity < th) return null;
   if (!note.note && note.name) note = { midi: note.midi, note: note.name, octave: note.octave, cents: note.cents };
   if (!note.note || typeof note.octave !== 'number') return null;
@@ -338,14 +346,35 @@ function observeMic(st, buf, sampleRate, cfg) {
     reading.pitch = heard.name + heard.octave;
     reading.cents = heard.cents;
   }
-  if (floorOk && heard) {
+  var overtone = !!(heard && heard.midi >= 84 && isOvertoneOfLower(buf, sampleRate, heard.midi));
+  if (floorOk && heard && !overtone) {
     var spelled = { midi: heard.midi, note: heard.name, octave: heard.octave, cents: heard.cents };
     var useClarity = Math.max(res && res.clarity ? res.clarity : 0, resHi && resHi.clarity ? resHi.clarity : 0, reading.clarity || 0);
-    var nm = acceptNote(spelled, useClarity, cfg);
+    var nm = acceptNote(spelled, useClarity, Object.assign({}, cfg, { attack: onset }));
     if (nm) {
       raw = heard.midi;
       rawPitch = nm;
       reading.accepted = true;
+    }
+  }
+  if (onset && (raw == null || (st.latchHigh != null && raw !== st.latchHigh))) {
+    st.latchHigh = null;
+    st.latchPitch = null;
+    st.latchLeft = 0;
+  }
+  if (raw != null && raw >= 80 && onset) {
+    st.latchHigh = raw;
+    st.latchPitch = rawPitch;
+    st.latchLeft = 2;
+  } else if (st.latchLeft > 0) {
+    st.latchLeft -= 1;
+    if ((raw == null || raw <= st.latchHigh - 9) && st.latchHigh != null) {
+      raw = st.latchHigh;
+      rawPitch = st.latchPitch;
+    }
+    if (st.latchLeft <= 0) {
+      st.latchHigh = null;
+      st.latchPitch = null;
     }
   }
   if (onset) st.votes = [];
@@ -1042,6 +1071,22 @@ function peakIsHarmonic(peakHz, f0) {
   var k = Math.round(ratio);
   if (k < 1 || k > 8) return false;
   return Math.abs(ratio - k) / k < 0.03;
+}
+
+function isOvertoneOfLower(buffer, sampleRate, midi) {
+  if (!buffer || !sampleRate || midi == null || midi < 84) return false;
+  var spec = spectrumOf(buffer);
+  var f0 = hzForNote(NAMES[((midi % 12) + 12) % 12], Math.floor(midi / 12) - 1);
+  var highMag = peakNear(spec.mag, f0, sampleRate, spec.size);
+  if (highMag <= 0) return false;
+  var k;
+  for (k = 2; k <= 4; k++) {
+    var fund = f0 / k;
+    if (fund < 70) continue;
+    var fm = peakNear(spec.mag, fund, sampleRate, spec.size);
+    if (fm > highMag * 0.5) return true;
+  }
+  return false;
 }
 
 function chooseMidi(buffer, sampleRate, cfg, hints, yinClarity) {
