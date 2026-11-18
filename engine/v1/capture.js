@@ -144,7 +144,7 @@ function noteFromMidi(midi) {
 }
 
 var INTERFACE = 1;
-var VERSION = '1.14.1';
+var VERSION = '1.14.2';
 var HOP_MS = 20;
 
 var MIN_RUN = 2;
@@ -265,6 +265,7 @@ function isBlocked(blocks, midi, now) {
   for (i = 0; i < blocks.length; i++) {
     var b = blocks[i];
     if (!b || now >= b.until) continue;
+    if (typeof b.from === 'number' && now < b.from) continue;
     var d = midi - b.midi;
     if (d < 0) d = -d;
     if (d === 0 || d === 1 || d === 12) return true;
@@ -1268,13 +1269,16 @@ function spectralView(buffer, sampleRate, cfg) {
     var harmonic = iv === 12 || iv === 19 || iv === 24;
     var ok = harmonic ? (ratio >= 0.82 && dip < 0.92) : (ratio >= 0.72 && dip <= 0.88);
     if (!ok) continue;
+    var loM = ps[0] < ps[i] ? ps[0] : ps[i];
+    var hiM = ps[0] < ps[i] ? ps[i] : ps[0];
+    if (harmonicPair(loM, hiM, spec.mag, sampleRate, spec.size)) continue;
     var a = spellDetected(ps[0]);
     var b = spellDetected(ps[i]);
     if (!a || !b) break;
     pair = a.midi < b.midi ? [a, b] : [b, a];
     break;
   }
-  return { pair: pair, top: top };
+  return { pair: pair, top: top, sal: sal, spec: spec };
 }
 
 function trackVoices(slots, cands) {
@@ -1652,10 +1656,21 @@ function createCapture(options) {
       var pLo = view.pair[0].midi < view.pair[1].midi ? view.pair[0].midi : view.pair[1].midi;
       var pHi = view.pair[0].midi < view.pair[1].midi ? view.pair[1].midi : view.pair[0].midi;
       var inPair = heardMidi === pLo || heardMidi === pHi;
-      if (heardMidi < pLo - 2 && (pHi - pLo === 12 || pHi - pLo === 19 || pHi - pLo === 24)) usePair = false;
-      else if (!inPair && heardMidi > pHi &&
-        (heardMidi - pLo === 12 || heardMidi - pLo === 19 || heardMidi - pLo === 24 ||
-         heardMidi - pHi === 12 || heardMidi - pHi === 19 || heardMidi - pHi === 24)) usePair = false;
+      if (!inPair) {
+        var heardSal = 0;
+        if (view.spec && view.spec.mag) {
+          heardSal = salienceAt(view.spec.mag, heardMidi, sr, view.spec.size);
+        } else if (view.sal && heardMidi >= 0 && heardMidi < view.sal.length) {
+          heardSal = view.sal[heardMidi] || 0;
+        }
+        var pSal = 0;
+        if (view.sal) {
+          var s0 = view.sal[pLo] || 0;
+          var s1 = view.sal[pHi] || 0;
+          pSal = s0 > s1 ? s0 : s1;
+        }
+        if (heardSal >= pSal * 0.4 && heardSal > 0) usePair = false;
+      }
     }
     if (usePair) {
       for (pi = 0; pi < view.pair.length; pi++) {
