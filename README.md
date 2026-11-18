@@ -22,12 +22,12 @@ const out = session.hop(frame, sampleRate, performance.now());
 
 - Llama a `hop` cada `engine.HOP_MS` (20 ms) con un `Float32Array` de un `AnalyserNode` (`fftSize` 2048). Devuelve `out.events` (notas que empiezan o terminan) y `out.score` (compases con notas y silencios).
 - Con MIDI o teclado usa `session.press('C4', 'midi', now)` y `session.release('C4', 'midi', now)`.
-- `profile: 'combat'` limita el rango a C3–C6; `maxVoices: 2` permite dos notas a la vez con el micrófono.
+- `profile: 'score'` cubre C2–C7; `profile: 'combat'` limita el rango a C3–C6; `maxVoices: 2` permite dos notas a la vez con el micrófono.
 - `engine.toMidi(session.score())` devuelve los bytes de un `.mid` y `engine.toMusicXML(session.score())` el texto de un `.musicxml`, con el tempo y el compás de la sesión.
 - [`examples/minimal.html`](examples/minimal.html) escucha el micrófono y descarga el MIDI en unas 50 líneas.
 - [piano-magic](https://github.com/juliangdeveloper/piano-magic) lo usa así para su combate.
 
-### API (`engine/v1`, versión 1.13.0)
+### API (`engine/v1`, versión 1.14.0)
 | Función | Qué hace |
 | --- | --- |
 | `createCapture(opts)` | Crea una sesión: `profile`, `maxVoices`, `a4` y `score: { bpm, timeSig, clef }`. |

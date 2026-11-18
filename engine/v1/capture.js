@@ -144,7 +144,7 @@ function noteFromMidi(midi) {
 }
 
 var INTERFACE = 1;
-var VERSION = '1.13.0';
+var VERSION = '1.14.0';
 var HOP_MS = 20;
 
 var MIN_RUN = 2;
@@ -196,6 +196,10 @@ function createMicState() {
     floorDb: null,
     octRun: 0,
     octMidi: null,
+    recentHigh: null,
+    recentHighAge: 0,
+    lowRun: 0,
+    lowMidi: null,
     slots: [blankVoice(), blankVoice()]
   };
 }
@@ -213,6 +217,10 @@ function resetMicState(st) {
   st.floorDb = null;
   st.octRun = 0;
   st.octMidi = null;
+  st.recentHigh = null;
+  st.recentHighAge = 0;
+  st.lowRun = 0;
+  st.lowMidi = null;
   st.slots = [blankVoice(), blankVoice()];
 }
 
@@ -236,6 +244,7 @@ function acceptNote(note, clarity, opts) {
   if (note.midi < minMidi || note.midi > maxMidi) return null;
   if (typeof note.cents === 'number' && Math.abs(note.cents) > maxCents) return null;
   var th = note.midi >= 72 ? relaxed : strict;
+  if (note.midi >= 72 && th > 0.55) th = 0.55;
   if (typeof clarity === 'number' && clarity < th) return null;
   if (!note.note && note.name) note = { midi: note.midi, note: note.name, octave: note.octave, cents: note.cents };
   if (!note.note || typeof note.octave !== 'number') return null;
@@ -278,21 +287,61 @@ function observeMic(st, buf, sampleRate, cfg) {
   var raw = null;
   var rawPitch = null;
   var heard = null;
+  var resHi = null;
+  if (cfg.maxMidi >= 72 && db >= cfg.gateDb && buf && buf.length) {
+    resHi = detectPitch(buf, sampleRate, { maxLag: Math.ceil(sampleRate / 250) });
+  }
   if (res && res.freq) {
     reading.freq = res.freq;
     reading.clarity = res.clarity;
     heard = noteFromFreq(res.freq, cfg.a4);
-    if (heard) {
-      reading.midi = heard.midi;
-      reading.note = heard.name;
-      reading.octave = heard.octave;
-      reading.pitch = heard.name + heard.octave;
-      reading.cents = heard.cents;
+  }
+  var hints = [];
+  if (heard) hints.push(heard.midi);
+  if (resHi && resHi.freq && resHi.clarity >= 0.7) {
+    var highNote = noteFromFreq(resHi.freq, cfg.a4);
+    if (highNote && highNote.midi >= 72 && (!heard || heard.midi >= 67 || res.clarity < 0.75)) {
+      hints.push(highNote.midi);
+      if (!heard || heard.midi >= 67) {
+        if (resHi.clarity >= reading.clarity) {
+          reading.freq = resHi.freq;
+          reading.clarity = resHi.clarity;
+        }
+      }
     }
   }
-  if (tonal && floorOk && heard) {
+  var strongHigh = !!(resHi && resHi.freq && resHi.clarity >= 0.7);
+  var picked = floorOk && (tonal || strongHigh)
+    ? chooseMidi(buf, sampleRate, cfg, hints, reading.clarity)
+    : null;
+  if (picked != null) {
+    var spelledPick = noteFromMidi(picked);
+    if (spelledPick) {
+      var cents = 0;
+      if (reading.freq) {
+        var midiFloat = 69 + 12 * Math.log2(reading.freq / (cfg.a4 || A4_DEFAULT));
+        cents = Math.round((midiFloat - picked) * 100);
+        if (cents > 50 || cents < -50) cents = 0;
+      }
+      heard = { name: spelledPick.name, octave: spelledPick.octave, midi: picked, cents: cents };
+      reading.freq = reading.freq || hzForNote(heard.name, heard.octave, cfg.a4);
+      if (strongHigh) reading.clarity = Math.max(reading.clarity, resHi.clarity);
+      else if (tonal) reading.clarity = Math.max(reading.clarity, res.clarity);
+    }
+  } else if (heard && (heard.midi < cfg.minMidi || heard.midi > cfg.maxMidi)) {
+    heard = null;
+  }
+  if (heard) {
+    reading.midi = heard.midi;
+    reading.note = heard.name;
+    reading.octave = heard.octave;
+    reading.pitch = heard.name + heard.octave;
+    reading.cents = heard.cents;
+  }
+  if (floorOk && heard) {
     var spelled = { midi: heard.midi, note: heard.name, octave: heard.octave, cents: heard.cents };
-    var nm = acceptNote(spelled, res.clarity, cfg);
+    var useClarity = Math.max(res && res.clarity ? res.clarity : 0, resHi && resHi.clarity ? resHi.clarity : 0, reading.clarity || 0);
+    var nm = acceptNote(spelled, useClarity, cfg);
     if (nm) {
       raw = heard.midi;
       rawPitch = nm;
@@ -320,11 +369,44 @@ function observeMic(st, buf, sampleRate, cfg) {
     }
     return { midi: null, pitch: null, db: db, reading: reading };
   }
+  if (raw != null && raw >= 72) {
+    st.recentHigh = raw;
+    st.recentHighAge = 0;
+  } else if (st.recentHigh != null) {
+    st.recentHighAge = (st.recentHighAge || 0) + 1;
+    if (st.recentHighAge > 10) {
+      st.recentHigh = null;
+      st.recentHighAge = 0;
+      st.lowRun = 0;
+      st.lowMidi = null;
+    }
+  }
+  if (best && st.recentHigh != null && best.midi <= st.recentHigh - 12) {
+    st.lowRun = (st.lowMidi === best.midi) ? (st.lowRun || 0) + 1 : 1;
+    st.lowMidi = best.midi;
+    if (st.lowRun < 6) {
+      if (count[st.recentHigh]) {
+        for (i = 0; i < st.votes.length; i++) {
+          v = st.votes[i];
+          if (v && v.midi === st.recentHigh) { best = v; break; }
+        }
+      } else if (st.heldMidi === st.recentHigh) {
+        return { midi: st.heldMidi, pitch: st.heldName, db: db, reading: reading };
+      } else {
+        return { midi: null, pitch: null, db: db, reading: reading };
+      }
+    }
+  } else {
+    st.lowRun = 0;
+    st.lowMidi = null;
+  }
   if (st.heldMidi != null && best.midi !== st.heldMidi &&
       Math.abs(best.midi - st.heldMidi) % 12 === 0 && !onset) {
     st.octRun = (st.octMidi === best.midi) ? (st.octRun || 0) + 1 : 1;
     st.octMidi = best.midi;
-    if (st.octRun < 15) return { midi: st.heldMidi, pitch: st.heldName, db: db, reading: reading };
+    var heldSupported = !!count[st.heldMidi];
+    var needOct = heldSupported ? 15 : 3;
+    if (st.octRun < needOct) return { midi: st.heldMidi, pitch: st.heldName, db: db, reading: reading };
   } else {
     st.octRun = 0;
     st.octMidi = null;
@@ -868,8 +950,12 @@ function salienceAt(mag, midi, sampleRate, size) {
   }
   if (!wsum) return 0;
   var pen = 1;
-  if (h2 > 0 && fund < h2 * 0.35) pen = 0.15;
-  else if (h2 > 0 && fund < h2 * 0.62) pen = 0.45;
+  if (midi < 72) {
+    if (h2 > 0 && fund < h2 * 0.35) pen = 0.15;
+    else if (h2 > 0 && fund < h2 * 0.62) pen = 0.45;
+  } else if (midi < 84) {
+    if (h2 > 0 && fund < h2 * 0.2) pen = 0.5;
+  }
   return (s / wsum) * pen;
 }
 
@@ -911,6 +997,204 @@ function spellDetected(midi) {
     cents: 0,
     clarity: null
   };
+}
+
+
+function salienceFloor(sal, lo, hi) {
+  var vals = [];
+  var m;
+  for (m = lo; m <= hi; m++) if (sal[m] > 0) vals.push(sal[m]);
+  if (!vals.length) return 0;
+  vals.sort(function (a, b) { return a - b; });
+  return vals[Math.floor(vals.length * 0.6)] || 0;
+}
+
+function binPeak(mag, sampleRate, size, loHz, hiHz) {
+  var binHz = sampleRate / size;
+  var lo = Math.max(1, Math.floor(loHz / binHz));
+  var hi = Math.min(mag.length - 2, Math.ceil(hiHz / binHz));
+  var bestI = lo;
+  var best = 0;
+  var i;
+  for (i = lo; i <= hi; i++) {
+    if (mag[i] > best) {
+      best = mag[i];
+      bestI = i;
+    }
+  }
+  if (bestI > lo && bestI < hi) {
+    var a = mag[bestI - 1];
+    var b = mag[bestI];
+    var c = mag[bestI + 1];
+    var denom = a - 2 * b + c;
+    var delta = 0;
+    if (Math.abs(denom) > 1e-18) delta = 0.5 * (a - c) / denom;
+    if (delta > 1) delta = 1;
+    if (delta < -1) delta = -1;
+    return { freq: (bestI + delta) * binHz, mag: best };
+  }
+  return { freq: bestI * binHz, mag: best };
+}
+
+function peakIsHarmonic(peakHz, f0) {
+  if (!f0 || f0 <= 0 || peakHz <= 0) return false;
+  var ratio = peakHz / f0;
+  var k = Math.round(ratio);
+  if (k < 1 || k > 8) return false;
+  return Math.abs(ratio - k) / k < 0.03;
+}
+
+function chooseMidi(buffer, sampleRate, cfg, hints, yinClarity) {
+  if (!buffer || buffer.length < 512 || !sampleRate) return null;
+  var spec = spectrumOf(buffer);
+  var lo = 36;
+  var hi = 96;
+  if (cfg && typeof cfg.minMidi === 'number' && cfg.minMidi < lo) lo = cfg.minMidi;
+  if (cfg && typeof cfg.maxMidi === 'number' && cfg.maxMidi > hi) hi = cfg.maxMidi;
+  var sal = new Float64Array(128);
+  var m;
+  for (m = lo; m <= hi; m++) sal[m] = salienceAt(spec.mag, m, sampleRate, spec.size);
+  var yin = (hints && hints.length) ? hints[0] : null;
+  var peak = binPeak(spec.mag, sampleRate, spec.size, 50, 4000);
+  var treble = binPeak(spec.mag, sampleRate, spec.size, 700, 4200);
+  var midAll = 0;
+  var nAll = 0;
+  for (m = lo; m <= hi; m++) {
+    if (sal[m] > 0) {
+      midAll += sal[m];
+      nAll += 1;
+    }
+  }
+  var meanS = nAll ? midAll / nAll : 0;
+
+  function inSearch(mid) {
+    return typeof mid === 'number' && mid >= lo && mid <= hi;
+  }
+
+  function scoreOf(mid) {
+    if (!inSearch(mid)) return 0;
+    var sc = sal[mid] || 0;
+    var f0 = hzForNote(NAMES[mid % 12], Math.floor(mid / 12) - 1);
+    if (peak && peak.freq && peakIsHarmonic(peak.freq, f0)) sc *= 1.25;
+    if (treble && treble.mag > 0 && f0 > 0) {
+      var rel = Math.abs(treble.freq - f0) / f0;
+      if (rel < 0.03) sc *= 1.45;
+      else if (Math.abs(treble.freq - 2 * f0) / (2 * f0) < 0.03) sc *= 1.12;
+    }
+    return sc;
+  }
+
+  var pick = -1;
+  var pickS = -1;
+
+  if (yin != null && yinClarity >= 0.68 && inSearch(yin)) {
+    var rels = [yin, yin - 12, yin + 12, yin - 24, yin + 24, yin - 19, yin + 19];
+    var yi;
+    var yinS = scoreOf(yin);
+    pick = yin;
+    pickS = yinS * 1.2;
+    var yinHz = hzForNote(NAMES[((yin % 12) + 12) % 12], Math.floor(yin / 12) - 1);
+    var peakFitsYin = !!(peak && peak.freq && peakIsHarmonic(peak.freq, yinHz));
+    var trebleOverrides = false;
+    if (treble && treble.freq > 640 && yinHz > 0) {
+      var harmK = treble.freq / yinHz;
+      var rk = Math.round(harmK);
+      var yinMag = peakNear(spec.mag, yinHz, sampleRate, spec.size);
+      var oddLow = peakNear(spec.mag, yinHz * 3, sampleRate, spec.size);
+      var po2 = rk === 2 || rk === 4 || rk === 8 || rk === 16 || rk === 32;
+      var tm = Math.round(69 + 12 * Math.log2(treble.freq / 440));
+      var notHarmonic = Math.abs(harmK - rk) > 0.08;
+      var isolatedHigh = tm >= 84 && inSearch(tm) && oddLow < treble.mag * 0.28 &&
+        (treble.mag > yinMag * 2 || (notHarmonic && treble.mag > yinMag * 0.7));
+      var octaveHigh = po2 && Math.abs(harmK - rk) < 0.05 && tm >= 76 && inSearch(tm) &&
+        treble.mag > yinMag * 1.25 && oddLow < treble.mag * 0.28;
+      if (isolatedHigh || octaveHigh) {
+        pick = tm;
+        pickS = scoreOf(tm);
+        trebleOverrides = true;
+      }
+    }
+    if (trebleOverrides) {
+    } else if (peakFitsYin) {
+      pick = yin;
+      pickS = yinS * 2;
+    } else {
+      for (yi = 0; yi < rels.length; yi++) {
+        if (!inSearch(rels[yi])) continue;
+        var rs = scoreOf(rels[yi]);
+        if (rs > pickS && rs > yinS * 1.4) {
+          pick = rels[yi];
+          pickS = rs;
+        }
+      }
+    }
+  } else {
+    var peaks = localPeaks(sal, lo, hi);
+    var cands = [];
+    function add(mid) {
+      if (!inSearch(mid)) return;
+      if (cands.indexOf(mid) === -1) cands.push(mid);
+    }
+    var i;
+    if (hints) for (i = 0; i < hints.length; i++) {
+      add(hints[i]);
+      add(hints[i] - 12);
+      add(hints[i] + 12);
+    }
+    for (i = 0; i < peaks.length && i < 8; i++) add(peaks[i]);
+    if (treble && treble.freq > 600) {
+      var tMidi = Math.round(69 + 12 * Math.log2(treble.freq / 440));
+      add(tMidi);
+      add(tMidi - 12);
+    }
+    for (i = 0; i < cands.length; i++) {
+      var sc = scoreOf(cands[i]);
+      if (sc > pickS) {
+        pickS = sc;
+        pick = cands[i];
+      }
+    }
+    if (treble && treble.freq > 800 && treble.mag > 0) {
+      var tm = Math.round(69 + 12 * Math.log2(treble.freq / 440));
+      var k;
+      var overtone = false;
+      for (k = 2; k <= 8; k++) {
+        var fund = treble.freq / k;
+        if (fund < 32) continue;
+        var fm = peakNear(spec.mag, fund, sampleRate, spec.size);
+        if (fm > treble.mag * 0.28) { overtone = true; break; }
+      }
+      if (inSearch(tm) && !overtone) {
+        var fundMag = peakNear(spec.mag, treble.freq, sampleRate, spec.size);
+        var halfHz = treble.freq / 2;
+        var halfMag = peakNear(spec.mag, halfHz, sampleRate, spec.size);
+        var lower = tm - 12;
+        if (fundMag > halfMag * 1.15 || !inSearch(lower)) {
+          if (scoreOf(tm) >= pickS * 0.7) {
+            pick = tm;
+            pickS = scoreOf(tm);
+          }
+        } else if (inSearch(lower) && halfMag > fundMag * 1.1 && scoreOf(lower) > scoreOf(tm)) {
+          pick = lower;
+          pickS = scoreOf(lower);
+        }
+      }
+    }
+  }
+
+  if (pick < 0 || pickS <= 0) return null;
+  if (meanS > 0 && pickS < meanS * 1.15 && !(yin != null && yinClarity >= 0.85 && pick === yin)) return null;
+  if (cfg && typeof cfg.minMidi === 'number' && pick < cfg.minMidi) return null;
+  if (cfg && typeof cfg.maxMidi === 'number' && pick > cfg.maxMidi) return null;
+  return pick;
+}
+
+function harmonicPair(low, high, mag, sampleRate, size) {
+  var iv = high - low;
+  if (iv !== 12 && iv !== 19 && iv !== 24) return false;
+  var fLow = peakNear(mag, hzForNote(NAMES[low % 12], Math.floor(low / 12) - 1), sampleRate, size);
+  var fHigh = peakNear(mag, hzForNote(NAMES[high % 12], Math.floor(high / 12) - 1), sampleRate, size);
+  return fHigh > 0 && fLow < fHigh * 0.42;
 }
 
 function spectralView(buffer, sampleRate, cfg) {
@@ -1314,8 +1598,21 @@ function createCapture(options) {
     var obs = observeMic(mic, buffer, sr, cfg);
     var cands = [];
     var pi;
-    if (view.pair.length >= 2) {
-      mic.votes = [];
+    var heardMidi = obs.midi;
+    if (heardMidi == null && obs.reading && obs.reading.accepted && obs.reading.midi != null) {
+      heardMidi = obs.reading.midi;
+    }
+    var usePair = view.pair.length >= 2;
+    if (usePair && heardMidi != null) {
+      var pLo = view.pair[0].midi < view.pair[1].midi ? view.pair[0].midi : view.pair[1].midi;
+      var pHi = view.pair[0].midi < view.pair[1].midi ? view.pair[1].midi : view.pair[0].midi;
+      var inPair = heardMidi === pLo || heardMidi === pHi;
+      if (heardMidi < pLo - 2 && (pHi - pLo === 12 || pHi - pLo === 19 || pHi - pLo === 24)) usePair = false;
+      else if (!inPair && heardMidi > pHi &&
+        (heardMidi - pLo === 12 || heardMidi - pLo === 19 || heardMidi - pLo === 24 ||
+         heardMidi - pHi === 12 || heardMidi - pHi === 19 || heardMidi - pHi === 24)) usePair = false;
+    }
+    if (usePair) {
       for (pi = 0; pi < view.pair.length; pi++) {
         if (!isBlocked(hopOpts.blocked, view.pair[pi].midi, nowMs)) cands.push(view.pair[pi]);
       }
