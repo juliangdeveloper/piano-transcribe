@@ -144,7 +144,7 @@ function noteFromMidi(midi) {
 }
 
 var INTERFACE = 1;
-var VERSION = '1.14.2';
+var VERSION = '1.14.3';
 var HOP_MS = 20;
 
 var MIN_RUN = 2;
@@ -1027,16 +1027,6 @@ function spellDetected(midi) {
     cents: 0,
     clarity: null
   };
-}
-
-
-function salienceFloor(sal, lo, hi) {
-  var vals = [];
-  var m;
-  for (m = lo; m <= hi; m++) if (sal[m] > 0) vals.push(sal[m]);
-  if (!vals.length) return 0;
-  vals.sort(function (a, b) { return a - b; });
-  return vals[Math.floor(vals.length * 0.6)] || 0;
 }
 
 function binPeak(mag, sampleRate, size, loHz, hiHz) {
