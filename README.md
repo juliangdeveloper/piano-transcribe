@@ -27,7 +27,7 @@ const out = session.hop(frame, sampleRate, performance.now());
 - [`examples/minimal.html`](examples/minimal.html) escucha el micrófono y descarga el MIDI en unas 50 líneas.
 - [piano-magic](https://github.com/juliangdeveloper/piano-magic) lo usa así para su combate.
 
-### API (`engine/v1`, versión 1.14.3)
+### API (`engine/v1`, versión 1.14.4)
 | Función | Qué hace |
 | --- | --- |
 | `createCapture(opts)` | Crea una sesión: `profile`, `maxVoices`, `a4` y `score: { bpm, timeSig, clef }`. |

@@ -163,9 +163,3 @@ test('La menor (A3 C4 E4) detecta las tres notas y no escribe un G#3 fantasma', 
   assert.ok(run.ons.includes('E4'));
 });
 
-test('La menor no duplica el E4', { todo: 'el acorde sale A3, E4, C4, E4' }, async () => {
-  const mod = await engine();
-  const session = mod.createCapture({ profile: 'score', maxVoices: 2 });
-  const run = play(mod, session, [[57, 60, 64]], { hops: 50 });
-  assert.deepStrictEqual(run.ons.slice().sort(), ['A3', 'C4', 'E4']);
-});

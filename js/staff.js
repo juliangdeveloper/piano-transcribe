@@ -314,7 +314,6 @@
       rows: rows,
       staveWidth: staveWidth,
       logicalWidth: logicalWidth,
-      logicalHeight: height,
       displayWidth: displayWidth,
       displayHeight: Math.ceil(height * scale),
       scale: scale

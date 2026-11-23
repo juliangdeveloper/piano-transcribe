@@ -144,7 +144,7 @@ function noteFromMidi(midi) {
 }
 
 var INTERFACE = 1;
-var VERSION = '1.14.3';
+var VERSION = '1.14.4';
 var HOP_MS = 20;
 
 var MIN_RUN = 2;
